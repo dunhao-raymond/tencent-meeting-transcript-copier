@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.3.0
+// @version      1.4.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -222,6 +222,18 @@
     }
 
     function getMeetingTitle() {
+        const exactTitleSelectors = [
+            '[class*="title-with-edit"] [class*="subject"]',
+            '[class*="meeting-main-subject"] [class*="title-with-edit"] [class*="subject"]',
+            '[class*="subject-container"] [class*="title-with-edit"] [class*="subject"]'
+        ];
+
+        for (const selector of exactTitleSelectors) {
+            const titleElement = document.querySelector(selector);
+            const title = getText(titleElement);
+            if (!isBadTitleText(title)) return title;
+        }
+
         const candidates = [];
         const selectors = [
             '.meeting-main-subject .subject',
