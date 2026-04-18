@@ -1,13 +1,17 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.6.0
+// @version      1.7.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
 // @match        https://meeting.tencent.com/ct/*
 // @grant        none
 // @license      MIT
+// @homepageURL  https://github.com/dunhao-raymond/tencent-meeting-transcript-copier
+// @supportURL   https://github.com/dunhao-raymond/tencent-meeting-transcript-copier/issues
+// @updateURL    https://raw.githubusercontent.com/dunhao-raymond/tencent-meeting-transcript-copier/main/plugin.js
+// @downloadURL  https://raw.githubusercontent.com/dunhao-raymond/tencent-meeting-transcript-copier/main/plugin.js
 // ==/UserScript==
 
 (function () {
