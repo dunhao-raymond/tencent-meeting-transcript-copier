@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.1.0
+// @version      1.2.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -14,6 +14,7 @@
     'use strict';
 
     const APP_ID = 'tm-transcript-exporter';
+    const PANEL_POSITION_KEY = `${APP_ID}:position`;
     const AI_REPAIR_INSTRUCTION = '将上面这段会议录音转写文本修复成正常的文字和语序，修复错别字，减少语气词，重复等等，使其表达更书面，但是不能遗漏任何一个知识点';
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -34,9 +35,13 @@
             font-size: 13px;
         }
         #${APP_ID} .tm-title {
-            margin: 0 0 8px;
+            margin: -10px -10px 8px;
+            padding: 10px;
             font-weight: 700;
             line-height: 1.35;
+            cursor: move;
+            user-select: none;
+            border-bottom: 1px solid #e5e7eb;
         }
         #${APP_ID} button {
             display: block;
@@ -586,6 +591,90 @@ ${AI_REPAIR_INSTRUCTION}
         }
     }
 
+    function clampPanelPosition(left, top, panel) {
+        const margin = 8;
+        const maxLeft = Math.max(margin, window.innerWidth - panel.offsetWidth - margin);
+        const maxTop = Math.max(margin, window.innerHeight - panel.offsetHeight - margin);
+
+        return {
+            left: Math.min(Math.max(margin, left), maxLeft),
+            top: Math.min(Math.max(margin, top), maxTop)
+        };
+    }
+
+    function setPanelPosition(panel, left, top, persist = true) {
+        const position = clampPanelPosition(left, top, panel);
+        panel.style.left = `${position.left}px`;
+        panel.style.top = `${position.top}px`;
+        panel.style.right = 'auto';
+
+        if (persist) {
+            localStorage.setItem(PANEL_POSITION_KEY, JSON.stringify(position));
+        }
+    }
+
+    function resetPanelPosition(panel) {
+        panel.style.left = 'auto';
+        panel.style.top = '18px';
+        panel.style.right = '18px';
+        localStorage.removeItem(PANEL_POSITION_KEY);
+    }
+
+    function restorePanelPosition(panel) {
+        try {
+            const saved = JSON.parse(localStorage.getItem(PANEL_POSITION_KEY) || 'null');
+            if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+                setPanelPosition(panel, saved.left, saved.top, false);
+            }
+        } catch (_) {
+            localStorage.removeItem(PANEL_POSITION_KEY);
+        }
+    }
+
+    function makePanelDraggable(panel) {
+        const handle = panel.querySelector('.tm-title');
+        if (!handle) return;
+
+        let dragging = false;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        handle.title = '拖动移动面板，双击回到右上角';
+        handle.addEventListener('dblclick', () => resetPanelPosition(panel));
+        handle.addEventListener('pointerdown', event => {
+            if (event.button !== 0) return;
+
+            const rect = panel.getBoundingClientRect();
+            dragging = true;
+            offsetX = event.clientX - rect.left;
+            offsetY = event.clientY - rect.top;
+            panel.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        });
+
+        panel.addEventListener('pointermove', event => {
+            if (!dragging) return;
+            setPanelPosition(panel, event.clientX - offsetX, event.clientY - offsetY, false);
+        });
+
+        panel.addEventListener('pointerup', event => {
+            if (!dragging) return;
+            dragging = false;
+            const rect = panel.getBoundingClientRect();
+            setPanelPosition(panel, rect.left, rect.top, true);
+            try {
+                panel.releasePointerCapture(event.pointerId);
+            } catch (_) {
+                // The pointer may already be released by the browser.
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            const rect = panel.getBoundingClientRect();
+            if (panel.style.left) setPanelPosition(panel, rect.left, rect.top, true);
+        });
+    }
+
     function createPanel() {
         if (document.getElementById(APP_ID)) return;
 
@@ -653,6 +742,8 @@ ${AI_REPAIR_INSTRUCTION}
         });
 
         document.body.appendChild(panel);
+        restorePanelPosition(panel);
+        makePanelDraggable(panel);
     }
 
     function init() {
