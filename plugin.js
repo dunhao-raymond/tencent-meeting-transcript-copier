@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.8.2
+// @version      1.8.3
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -72,8 +72,6 @@
         }
         .${APP_ID}-toast {
             position: fixed;
-            right: 18px;
-            top: 230px;
             z-index: 2147483647;
             max-width: 360px;
             padding: 10px 14px;
@@ -129,6 +127,7 @@
         '复制AI修复提示词',
         '打开Codex修复',
         '腾讯会议逐字稿',
+        '会议转写助手',
         '正在收集...',
         '取消',
         '关闭'
@@ -308,7 +307,39 @@
         if (type === 'success') toast.style.background = '#047857';
         if (type === 'error') toast.style.background = '#b91c1c';
         document.body.appendChild(toast);
+        positionToast(toast);
         setTimeout(() => toast.remove(), type === 'error' ? 5200 : 3200);
+    }
+
+    function positionToast(toast = document.querySelector(`.${APP_ID}-toast`)) {
+        if (!toast) return;
+
+        const panel = document.getElementById(APP_ID);
+        if (!panel) {
+            toast.style.left = '18px';
+            toast.style.top = '18px';
+            return;
+        }
+
+        const gap = 8;
+        const margin = 8;
+        const panelRect = panel.getBoundingClientRect();
+        const toastWidth = Math.min(360, Math.max(220, panelRect.width));
+        toast.style.width = `${toastWidth}px`;
+
+        const toastRect = toast.getBoundingClientRect();
+        const left = Math.min(
+            Math.max(margin, panelRect.left),
+            Math.max(margin, window.innerWidth - toastRect.width - margin)
+        );
+        const belowTop = panelRect.bottom + gap;
+        const aboveTop = panelRect.top - toastRect.height - gap;
+        const top = belowTop + toastRect.height + margin <= window.innerHeight
+            ? belowTop
+            : Math.max(margin, aboveTop);
+
+        toast.style.left = `${left}px`;
+        toast.style.top = `${top}px`;
     }
 
     async function copyToClipboard(text) {
@@ -695,6 +726,7 @@ ${AI_REPAIR_INSTRUCTION}
         panel.style.left = `${position.left}px`;
         panel.style.top = `${position.top}px`;
         panel.style.right = 'auto';
+        positionToast();
 
         if (persist) {
             localStorage.setItem(PANEL_POSITION_KEY, JSON.stringify(position));
@@ -706,6 +738,7 @@ ${AI_REPAIR_INSTRUCTION}
         panel.style.top = '18px';
         panel.style.right = '18px';
         localStorage.removeItem(PANEL_POSITION_KEY);
+        positionToast();
     }
 
     function restorePanelPosition(panel) {
@@ -760,6 +793,7 @@ ${AI_REPAIR_INSTRUCTION}
         window.addEventListener('resize', () => {
             const rect = panel.getBoundingClientRect();
             if (panel.style.left) setPanelPosition(panel, rect.left, rect.top, true);
+            positionToast();
         });
     }
 
@@ -773,7 +807,7 @@ ${AI_REPAIR_INSTRUCTION}
         const panel = document.createElement('div');
         panel.id = APP_ID;
         panel.innerHTML = `
-            <div class="tm-title">腾讯会议逐字稿</div>
+            <div class="tm-title">会议转写助手</div>
             <button type="button" data-action="copy-md">复制完整逐字稿</button>
             <button type="button" data-action="copy-repair-prompt">复制AI修复提示词</button>
             <button type="button" data-action="open-codex">打开Codex修复</button>
