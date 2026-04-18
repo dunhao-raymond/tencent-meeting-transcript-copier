@@ -1,0 +1,5 @@
+.tmp/
+*.mhtml
+plugin_version_*.js
+plugin.v*.js
+build-history-version.js
