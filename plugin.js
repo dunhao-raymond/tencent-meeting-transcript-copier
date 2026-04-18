@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.2.0
+// @version      1.3.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -144,23 +144,126 @@
         return normalizeText(element ? (element.innerText || element.textContent || '') : '');
     }
 
+    function isBadTitleText(text) {
+        if (!text) return true;
+        if (text.length < 3 || text.length > 160) return true;
+        if (/^(腾讯会议|Tencent Meeting|会议详情|会议录制|录制详情|逐字稿|转写|会议纪要|纪要)$/i.test(text)) return true;
+        if (/您可召开|快速会议|加入会议|预定会议|共享屏幕|登录|注册|微信|手机号|验证码|复制完整逐字稿|导出|打开ChatGPT/.test(text)) return true;
+        if (/文档标题使用会议标题|请输出一份|修复成正常|不能遗漏任何一个知识点|Notion|上面这段会议录音/.test(text)) return true;
+        if (/^返回$|^分享$|^另存为$|^翻译$|^正在讲话/.test(text)) return true;
+        if (/\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}/.test(text)) return true;
+        if (/^[\d:：/.\-\s]+$/.test(text)) return true;
+        return false;
+    }
+
+    function extractTitleFragments(text) {
+        const normalized = normalizeText(text)
+            .replace(/[“”]/g, '"')
+            .replace(/^"+|"+$/g, '');
+
+        if (!normalized) return [];
+
+        const fragments = [];
+        const quotedTitle = normalized.match(/会议标题\s*"?([^"\n]+(?:\n[^"\n]+)*)"?/);
+        if (quotedTitle) {
+            fragments.push(...extractTitleFragments(quotedTitle[1]));
+        }
+
+        const lines = normalized
+            .split(/\n+/)
+            .map(line => normalizeText(line.replace(/^返回\s*/, '')))
+            .flatMap(line => line.split(/\s{2,}/).map(normalizeText))
+            .filter(Boolean)
+            .filter(line => !isBadTitleText(line))
+            .filter(line => !/^\d{3}\s+\d{3}\s+\d{3}$/.test(line));
+
+        fragments.push(...lines);
+
+        const inlineAfterBack = normalized.match(/返回\s+([^\n]+?)(?:\s+\d{4}\s*\/|\n|$)/);
+        if (inlineAfterBack) {
+            const value = normalizeText(inlineAfterBack[1]);
+            if (!isBadTitleText(value)) fragments.push(value);
+        }
+
+        return [...new Set(fragments)];
+    }
+
+    function addTitleCandidate(candidates, text, source, element) {
+        for (const fragment of extractTitleFragments(text)) {
+            const value = fragment
+                .replace(/^会议主题[:：]\s*/, '')
+                .replace(/^录制名称[:：]\s*/, '')
+                .replace(/^标题[:：]\s*/, '')
+                .replace(/\s*[-_]\s*腾讯会议.*$/, '');
+
+            if (isBadTitleText(value)) continue;
+
+            let score = 0;
+            if (/title|subject|topic|name/i.test(source)) score += 8;
+            if (/meeting|record|video|detail|file/i.test(source)) score += 6;
+            if (/top-header/.test(source)) score += 28;
+            if (/[：:]/.test(value)) score += 10;
+            if (/\d/.test(value)) score += 6;
+            if (/[（(].+[）)]/.test(value)) score += 4;
+            if (/[a-zA-Z]/.test(value)) score += 3;
+            if (/第.+节|基础|课程|python|课|讲/i.test(value)) score += 10;
+            if (element) {
+                const rect = element.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) score += 2;
+                if (rect.top >= 0 && rect.top < 90 && rect.left >= 0 && rect.left < 720) score += 26;
+                if (rect.top >= 0 && rect.top < window.innerHeight * 0.7) score += 2;
+                const className = String(element.className || '');
+                if (/subject|title|topic|name/i.test(className)) score += 4;
+            }
+            if (value.length >= 8 && value.length <= 80) score += 3;
+
+            candidates.push({ value, score, source });
+        }
+    }
+
     function getMeetingTitle() {
+        const candidates = [];
         const selectors = [
             '.meeting-main-subject .subject',
             '.meeting-subject',
             '.meeting-title',
             '[class*="meeting"][class*="title"]',
+            '[class*="record"][class*="title"]',
+            '[class*="record"][class*="name"]',
+            '[class*="video"][class*="title"]',
+            '[class*="video"][class*="name"]',
+            '[class*="detail"][class*="title"]',
+            '[class*="file"][class*="name"]',
+            '[class*="topic"]',
             '[class*="subject"]',
-            'h1'
+            'h1',
+            'h2'
         ];
 
+        addTitleCandidate(candidates, document.title, 'document.title');
+
+        document.querySelectorAll('meta[property="og:title"], meta[name="title"]').forEach(meta => {
+            addTitleCandidate(candidates, meta.getAttribute('content'), 'meta:title');
+        });
+
         for (const selector of selectors) {
-            const element = document.querySelector(selector);
-            const text = getText(element);
-            if (text && text.length <= 120) return text;
+            document.querySelectorAll(selector).forEach(element => {
+                addTitleCandidate(candidates, getText(element), selector, element);
+                addTitleCandidate(candidates, element.getAttribute('title'), `${selector}@title`, element);
+                addTitleCandidate(candidates, element.getAttribute('aria-label'), `${selector}@aria-label`, element);
+            });
         }
 
-        return normalizeText(document.title).replace(/[-_ ]*腾讯会议.*/, '') || '腾讯会议逐字稿';
+        document.querySelectorAll('body *').forEach(element => {
+            const rect = element.getBoundingClientRect();
+            if (rect.top < 0 || rect.top > 92 || rect.left < 0 || rect.left > 760) return;
+            const text = getText(element);
+            if (!text || text.length > 260) return;
+            addTitleCandidate(candidates, text, 'top-header-layout', element);
+        });
+
+        candidates.sort((a, b) => b.score - a.score || b.value.length - a.value.length);
+        return candidates[0]?.value || '腾讯会议逐字稿';
     }
 
     function getRecordingTime() {
