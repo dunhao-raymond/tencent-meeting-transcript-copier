@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.8.1
+// @version      1.8.2
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -119,6 +119,10 @@
     ].join(',');
 
     const timePattern = /(?:\d{1,2}:)?\d{1,2}:\d{2}/;
+    const transcriptParagraphSelector = [
+        '[class*="paragraph-module_paragraph"][data-pid]',
+        '[class*="paragraph-module_detail"][data-pid]'
+    ].join(',');
 
     const uiNoise = new Set([
         '复制完整逐字稿',
@@ -392,8 +396,10 @@
 
     function hasTranscriptDomShape(row) {
         const className = String(row.className || '');
-        if (/minutes-module-row/.test(className)) return Boolean(row.querySelector('[data-pid]'));
-        if (/paragraph-module_detail|paragraph-module_paragraph/.test(className) && row.hasAttribute('data-pid')) return true;
+        const paragraph = getTranscriptParagraph(row);
+
+        if (/minutes-module-row/.test(className)) return Boolean(paragraph);
+        if (paragraph === row) return true;
 
         const hasSpeakerNode = Boolean(row.querySelector(speakerSelectors));
         const hasTimeNode = Array.from(row.querySelectorAll(timeSelectors)).some(element => timePattern.test(getText(element)));
@@ -402,23 +408,31 @@
         return hasSentenceNode && (hasSpeakerNode || hasTimeNode);
     }
 
+    function getTranscriptParagraph(row) {
+        if (!row || row.nodeType !== 1) return null;
+        if (row.matches?.(transcriptParagraphSelector)) return row;
+        return row.querySelector?.(transcriptParagraphSelector) || null;
+    }
+
     function parseTranscriptRow(row) {
         if (!isVisible(row)) return null;
         if (!hasTranscriptDomShape(row)) return null;
 
-        const fullText = getText(row);
+        const paragraph = getTranscriptParagraph(row);
+        const source = paragraph || row;
+        const fullText = getText(source);
         if (!fullText || fullText.length < 2 || uiNoise.has(fullText)) return null;
         if (/导出|复制|Markdown|HTML|TXT|正在收集/.test(fullText) && fullText.length < 80) return null;
 
-        const time = findTime(row, fullText);
-        const selectedText = findTextCandidate(row);
-        const speaker = findSpeaker(row, fullText, selectedText);
+        const time = findTime(source, fullText);
+        const selectedText = findTextCandidate(source);
+        const speaker = findSpeaker(source, fullText, selectedText);
         const text = cleanTranscriptText(selectedText || textFromLines(fullText, speaker, time), speaker, time);
 
         if (!text || text.length < 2 || uiNoise.has(text)) return null;
         if (text === speaker || text === time) return null;
 
-        const pid = row.getAttribute('data-pid') || row.querySelector('[data-pid]')?.getAttribute('data-pid') || '';
+        const pid = paragraph?.getAttribute('data-pid') || row.getAttribute('data-pid') || '';
         const index = row.getAttribute('data-index') || row.getAttribute('data-item-index') || '';
         const numericOrder = Number.parseInt(pid || index, 10);
 
