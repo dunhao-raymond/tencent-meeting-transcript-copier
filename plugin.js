@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.4.0
+// @version      1.5.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -118,10 +118,6 @@
 
     const uiNoise = new Set([
         '复制完整逐字稿',
-        '复制纯文本',
-        '导出 Markdown',
-        '导出 TXT',
-        '导出 HTML',
         '复制AI修复提示词',
         '打开ChatGPT修复',
         '腾讯会议逐字稿',
@@ -802,10 +798,6 @@ ${AI_REPAIR_INSTRUCTION}
         panel.innerHTML = `
             <div class="tm-title">腾讯会议逐字稿</div>
             <button type="button" data-action="copy-md">复制完整逐字稿</button>
-            <button type="button" data-action="copy-text">复制纯文本</button>
-            <button type="button" data-action="export-md">导出 Markdown</button>
-            <button type="button" data-action="export-txt">导出 TXT</button>
-            <button type="button" data-action="export-html">导出 HTML</button>
             <button type="button" data-action="copy-repair-prompt">复制AI修复提示词</button>
             <button type="button" data-action="open-chatgpt">打开ChatGPT修复</button>
             <div class="tm-muted">会自动切到逐字稿并滚动收集。长文本会先复制到剪贴板。</div>
@@ -817,31 +809,9 @@ ${AI_REPAIR_INSTRUCTION}
 
             const action = button.dataset.action;
             withTranscript(async items => {
-                const baseName = `${safeFilename(getMeetingTitle())}_逐字稿_${timestamp()}`;
-
                 if (action === 'copy-md') {
                     const ok = await copyToClipboard(formatMarkdown(items));
                     showToast(ok ? `已复制 ${items.length} 条逐字稿` : '复制失败，请检查浏览器剪贴板权限', ok ? 'success' : 'error');
-                }
-
-                if (action === 'copy-text') {
-                    const ok = await copyToClipboard(formatPlainText(items));
-                    showToast(ok ? `已复制 ${items.length} 条纯文本逐字稿` : '复制失败，请检查浏览器剪贴板权限', ok ? 'success' : 'error');
-                }
-
-                if (action === 'export-md') {
-                    downloadFile(formatMarkdown(items), `${baseName}.md`, 'text/markdown');
-                    showToast(`已导出 ${items.length} 条逐字稿`, 'success');
-                }
-
-                if (action === 'export-txt') {
-                    downloadFile(formatPlainText(items), `${baseName}.txt`, 'text/plain');
-                    showToast(`已导出 ${items.length} 条逐字稿`, 'success');
-                }
-
-                if (action === 'export-html') {
-                    downloadFile(formatHtml(items), `${baseName}.html`, 'text/html');
-                    showToast(`已导出 ${items.length} 条逐字稿`, 'success');
                 }
 
                 if (action === 'copy-repair-prompt') {
