@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.5.0
+// @version      1.6.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -119,7 +119,7 @@
     const uiNoise = new Set([
         '复制完整逐字稿',
         '复制AI修复提示词',
-        '打开ChatGPT修复',
+        '打开Codex修复',
         '腾讯会议逐字稿',
         '正在收集...',
         '取消',
@@ -144,7 +144,7 @@
         if (!text) return true;
         if (text.length < 3 || text.length > 160) return true;
         if (/^(腾讯会议|Tencent Meeting|会议详情|会议录制|录制详情|逐字稿|转写|会议纪要|纪要)$/i.test(text)) return true;
-        if (/您可召开|快速会议|加入会议|预定会议|共享屏幕|登录|注册|微信|手机号|验证码|复制完整逐字稿|导出|打开ChatGPT/.test(text)) return true;
+        if (/您可召开|快速会议|加入会议|预定会议|共享屏幕|登录|注册|微信|手机号|验证码|复制完整逐字稿|导出|打开ChatGPT|打开Codex/.test(text)) return true;
         if (/文档标题使用会议标题|请输出一份|修复成正常|不能遗漏任何一个知识点|Notion|上面这段会议录音/.test(text)) return true;
         if (/^返回$|^分享$|^另存为$|^翻译$|^正在讲话/.test(text)) return true;
         if (/\d{4}\s*\/\s*\d{1,2}\s*\/\s*\d{1,2}/.test(text)) return true;
@@ -290,19 +290,6 @@
         return new Date().toLocaleString('zh-CN');
     }
 
-    function safeFilename(name) {
-        return normalizeText(name)
-            .replace(/[\\/:*?"<>|]/g, '_')
-            .replace(/\s+/g, ' ')
-            .slice(0, 90) || '腾讯会议逐字稿';
-    }
-
-    function timestamp() {
-        const now = new Date();
-        const pad = value => String(value).padStart(2, '0');
-        return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    }
-
     function showToast(message, type = 'info') {
         const old = document.querySelector(`.${APP_ID}-toast`);
         if (old) old.remove();
@@ -331,18 +318,6 @@
             textarea.remove();
             return ok;
         }
-    }
-
-    function downloadFile(content, filename, mimeType) {
-        const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
     }
 
     function isVisible(element) {
@@ -632,59 +607,28 @@ ${AI_REPAIR_INSTRUCTION}
 请输出一份修正后的完整文字稿，并自动保存到我的 Notion 中：新建一份文档，文档标题使用会议标题“${title}”。`;
     }
 
-    async function openChatGptWithPrompt(prompt) {
+    async function openCodexWithPrompt(prompt) {
         const copied = await copyToClipboard(prompt);
-        const encoded = encodeURIComponent(prompt);
+        const url = new URL('codex://new');
+        url.searchParams.set('originUrl', window.location.href);
+        const encodedPrompt = encodeURIComponent(prompt);
+        const canPassPromptInUrl = encodedPrompt.length <= 12000;
 
-        if (encoded.length <= 6500) {
-            window.open(`https://chatgpt.com/?q=${encoded}`, '_blank', 'noopener,noreferrer');
-            return copied ? '已打开 ChatGPT，并已复制完整提示词' : '已打开 ChatGPT，但复制提示词失败';
+        if (canPassPromptInUrl) {
+            url.searchParams.set('prompt', prompt);
         }
 
-        window.open('https://chatgpt.com/', '_blank', 'noopener,noreferrer');
-        return copied
-            ? '逐字稿太长，已复制完整提示词并打开 ChatGPT，请粘贴发送'
-            : '逐字稿太长，已打开 ChatGPT，但复制提示词失败';
-    }
+        const link = document.createElement('a');
+        link.href = url.toString();
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
 
-    function escapeHtml(value) {
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
-    function formatHtml(items) {
-        const title = getMeetingTitle();
-        const rows = items.map(item => `
-            <article class="item">
-                <h2>${escapeHtml(item.speaker)}${item.time ? ` <span>${escapeHtml(item.time)}</span>` : ''}</h2>
-                <p>${escapeHtml(item.text).replace(/\n/g, '<br>')}</p>
-            </article>
-        `).join('\n');
-
-        return `<!doctype html>
-<html lang="zh-CN">
-<head>
-    <meta charset="utf-8">
-    <title>${escapeHtml(title)}</title>
-    <style>
-        body { max-width: 920px; margin: 0 auto; padding: 28px; font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; }
-        h1 { font-size: 28px; }
-        .meta { color: #4b5563; margin-bottom: 24px; }
-        .item { border-top: 1px solid #e5e7eb; padding: 16px 0; }
-        .item h2 { margin: 0 0 8px; font-size: 17px; }
-        .item span { color: #6b7280; font-weight: 500; }
-        .item p { margin: 0; white-space: normal; }
-    </style>
-</head>
-<body>
-    <h1>${escapeHtml(title)}</h1>
-    <div class="meta">录制时间: ${escapeHtml(getRecordingTime())}<br>导出时间: ${escapeHtml(new Date().toLocaleString('zh-CN'))}</div>
-    ${rows}
-</body>
-</html>`;
+        if (!copied) return '已尝试打开 Codex，但复制提示词失败';
+        return canPassPromptInUrl
+            ? '已复制完整提示词，并尝试在 Codex 新聊天中填入'
+            : '提示词较长，已复制到剪贴板并打开 Codex 新聊天，请粘贴发送';
     }
 
     async function withTranscript(action) {
@@ -799,8 +743,8 @@ ${AI_REPAIR_INSTRUCTION}
             <div class="tm-title">腾讯会议逐字稿</div>
             <button type="button" data-action="copy-md">复制完整逐字稿</button>
             <button type="button" data-action="copy-repair-prompt">复制AI修复提示词</button>
-            <button type="button" data-action="open-chatgpt">打开ChatGPT修复</button>
-            <div class="tm-muted">会自动切到逐字稿并滚动收集。长文本会先复制到剪贴板。</div>
+            <button type="button" data-action="open-codex">打开Codex修复</button>
+            <div class="tm-muted">会自动切到逐字稿并滚动收集。Codex 打不开时，可直接粘贴剪贴板内容。</div>
         `;
 
         panel.addEventListener('click', event => {
@@ -819,8 +763,8 @@ ${AI_REPAIR_INSTRUCTION}
                     showToast(ok ? `已复制 AI 修复提示词，包含 ${items.length} 条逐字稿` : '复制失败，请检查浏览器剪贴板权限', ok ? 'success' : 'error');
                 }
 
-                if (action === 'open-chatgpt') {
-                    const message = await openChatGptWithPrompt(formatRepairPrompt(items));
+                if (action === 'open-codex') {
+                    const message = await openCodexWithPrompt(formatRepairPrompt(items));
                     showToast(message, message.includes('失败') ? 'error' : 'success');
                 }
             });
@@ -837,7 +781,6 @@ ${AI_REPAIR_INSTRUCTION}
             collectTranscript,
             formatMarkdown,
             formatPlainText,
-            formatHtml,
             formatRepairPrompt
         };
     }
