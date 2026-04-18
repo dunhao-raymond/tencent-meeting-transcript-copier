@@ -1,11 +1,14 @@
-# 腾讯会议转写助手 / Tencent Meeting Transcript Copier
+# 腾讯会议转写助手
 
-<details open>
-<summary>中文</summary>
+<p align="center">
+  <a href="#简体中文">简体中文</a> | <a href="#english">English</a>
+</p>
 
-## 简介
+<a id="简体中文"></a>
 
-这是一个用于腾讯会议录制页面的 Tampermonkey 用户脚本。
+## 简体中文
+
+一个用于腾讯会议录制页面的 Tampermonkey 用户脚本。
 
 它可以从腾讯会议录制页、逐字稿页中收集完整转写内容，包括使用虚拟滚动渲染的长逐字稿。脚本会自动切到逐字稿面板并滚动收集内容，避免只复制当前屏幕里可见的一小段。
 
@@ -27,7 +30,7 @@ https://raw.githubusercontent.com/dunhao-raymond/tencent-meeting-transcript-copi
 
 1. 打开腾讯会议录制链接。
 2. 等页面加载完成。
-3. 使用页面右上角的“会议转写助手”面板。
+3. 使用页面上的“会议转写助手”面板。
 4. 点击需要的操作：
    - `复制完整逐字稿`
    - `复制AI修复提示词`
@@ -44,7 +47,7 @@ https://raw.githubusercontent.com/dunhao-raymond/tencent-meeting-transcript-copi
 
 https://raw.githubusercontent.com/dunhao-raymond/tencent-meeting-transcript-copier/main/plugin.js
 
-脚本安装后，只要 `main` 分支里的 `@version` 增加，Tampermonkey 就可以在自己的自动检查周期内发现更新。
+脚本安装后，只要 `main` 分支里的 `@version` 增加，Tampermonkey 就可以在自己的自动检查周期内发现更新。Tampermonkey 不会在 GitHub 推送后立刻收到通知，所以更新可能不会马上弹出。
 
 如果想立刻更新，也可以手动检查：
 
@@ -52,19 +55,21 @@ https://raw.githubusercontent.com/dunhao-raymond/tencent-meeting-transcript-copi
 2. 打开已安装的脚本。
 3. 点击检查用户脚本更新。
 
-## 文件说明
+## 核心文件
 
 - `plugin.js`: Tampermonkey 用户脚本主体。
-- `capture-mhtml.js`: 调试时使用的小工具，用于保存动态页面快照为 MHTML。
 
-</details>
+<p align="center">
+  <a href="#腾讯会议转写助手">回到顶部</a> · <a href="#english">English</a>
+</p>
 
-<details>
-<summary>English</summary>
+---
 
-## Overview
+<a id="english"></a>
 
-This is a Tampermonkey userscript for Tencent Meeting recording pages.
+## English
+
+A Tampermonkey userscript for Tencent Meeting recording pages.
 
 It collects full transcripts from Tencent Meeting recording and transcript pages, including long transcripts rendered with virtual scrolling. The script can switch to the transcript panel and scroll through the content so it does not only copy the visible rows.
 
@@ -111,9 +116,10 @@ To update immediately:
 2. Open the installed script.
 3. Use `Check for userscript updates`.
 
-## Files
+## Core File
 
 - `plugin.js`: the Tampermonkey userscript.
-- `capture-mhtml.js`: a small debugging helper used to save a dynamic page snapshot as MHTML.
 
-</details>
+<p align="center">
+  <a href="#腾讯会议转写助手">Back to top</a> · <a href="#简体中文">简体中文</a>
+</p>
