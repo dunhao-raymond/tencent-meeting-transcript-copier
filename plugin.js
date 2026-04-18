@@ -1,8 +1,8 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.0.0
-// @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，兼容虚拟滚动和动态 class。
+// @version      1.1.0
+// @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
 // @match        https://meeting.tencent.com/ct/*
@@ -14,6 +14,7 @@
     'use strict';
 
     const APP_ID = 'tm-transcript-exporter';
+    const AI_REPAIR_INSTRUCTION = '将上面这段会议录音转写文本修复成正常的文字和语序，修复错别字，减少语气词，重复等等，使其表达更书面，但是不能遗漏任何一个知识点';
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const css = `
@@ -504,6 +505,32 @@
         return lines.join('\n');
     }
 
+    function formatRepairPrompt(items) {
+        const title = getMeetingTitle();
+        const transcript = formatPlainText(items);
+
+        return `${transcript}
+
+${AI_REPAIR_INSTRUCTION}
+
+请输出一份修正后的完整文字稿，并自动保存到我的 Notion 中：新建一份文档，文档标题使用会议标题“${title}”。`;
+    }
+
+    async function openChatGptWithPrompt(prompt) {
+        const copied = await copyToClipboard(prompt);
+        const encoded = encodeURIComponent(prompt);
+
+        if (encoded.length <= 6500) {
+            window.open(`https://chatgpt.com/?q=${encoded}`, '_blank', 'noopener,noreferrer');
+            return copied ? '已打开 ChatGPT，并已复制完整提示词' : '已打开 ChatGPT，但复制提示词失败';
+        }
+
+        window.open('https://chatgpt.com/', '_blank', 'noopener,noreferrer');
+        return copied
+            ? '逐字稿太长，已复制完整提示词并打开 ChatGPT，请粘贴发送'
+            : '逐字稿太长，已打开 ChatGPT，但复制提示词失败';
+    }
+
     function escapeHtml(value) {
         return String(value)
             .replace(/&/g, '&amp;')
@@ -612,6 +639,16 @@
                     downloadFile(formatHtml(items), `${baseName}.html`, 'text/html');
                     showToast(`已导出 ${items.length} 条逐字稿`, 'success');
                 }
+
+                if (action === 'copy-repair-prompt') {
+                    const ok = await copyToClipboard(formatRepairPrompt(items));
+                    showToast(ok ? `已复制 AI 修复提示词，包含 ${items.length} 条逐字稿` : '复制失败，请检查浏览器剪贴板权限', ok ? 'success' : 'error');
+                }
+
+                if (action === 'open-chatgpt') {
+                    const message = await openChatGptWithPrompt(formatRepairPrompt(items));
+                    showToast(message, message.includes('失败') ? 'error' : 'success');
+                }
             });
         });
 
@@ -624,7 +661,8 @@
             collectTranscript,
             formatMarkdown,
             formatPlainText,
-            formatHtml
+            formatHtml,
+            formatRepairPrompt
         };
     }
 
