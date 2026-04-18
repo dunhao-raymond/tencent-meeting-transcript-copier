@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.8.0
+// @version      1.8.1
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -86,9 +86,9 @@
     `;
 
     const transcriptRowSelectors = [
-        '[data-pid]',
-        '[class*="paragraph-module_detail"]',
         '[class*="minutes-module-row"]',
+        '[class*="paragraph-module_paragraph"][data-pid]',
+        '[class*="paragraph-module_detail"][data-pid]',
         '[class*="transcript"][class*="item"]',
         '[class*="subtitle"][class*="item"]',
         '[class*="sentence"][class*="item"]'
@@ -392,8 +392,8 @@
 
     function hasTranscriptDomShape(row) {
         const className = String(row.className || '');
-        if (row.matches('[data-pid]') || row.querySelector('[data-pid]')) return true;
-        if (/paragraph-module_detail|minutes-module-row/.test(className)) return true;
+        if (/minutes-module-row/.test(className)) return Boolean(row.querySelector('[data-pid]'));
+        if (/paragraph-module_detail|paragraph-module_paragraph/.test(className) && row.hasAttribute('data-pid')) return true;
 
         const hasSpeakerNode = Boolean(row.querySelector(speakerSelectors));
         const hasTimeNode = Array.from(row.querySelectorAll(timeSelectors)).some(element => timePattern.test(getText(element)));
@@ -436,8 +436,8 @@
         return `${item.time}|${item.speaker}|${item.text}`.slice(0, 300);
     }
 
-    function collectVisibleTranscript(store) {
-        const rows = Array.from(document.querySelectorAll(transcriptRowSelectors));
+    function collectVisibleTranscript(store, root = document) {
+        const rows = Array.from(root.querySelectorAll(transcriptRowSelectors));
         let added = 0;
 
         for (const row of rows) {
@@ -523,7 +523,7 @@
 
         for (let step = 0; step < maxSteps; step += 1) {
             const before = store.size;
-            collectVisibleTranscript(store);
+            collectVisibleTranscript(store, container);
 
             const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
             if (container.scrollTop >= maxTop - 5) break;
@@ -545,7 +545,7 @@
             await sleep(store.size > before ? 120 : 220);
         }
 
-        collectVisibleTranscript(store);
+        collectVisibleTranscript(store, container);
         container.scrollTop = originalTop;
         container.dispatchEvent(new Event('scroll', { bubbles: true }));
     }
@@ -555,9 +555,10 @@
 
         await clickTranscriptTab();
         await waitForRows();
-        collectVisibleTranscript(store);
-
         const containers = getScrollContainers();
+        for (const container of containers) {
+            collectVisibleTranscript(store, container);
+        }
         for (const container of containers.slice(0, 6)) {
             await sweepContainer(container, store);
         }
