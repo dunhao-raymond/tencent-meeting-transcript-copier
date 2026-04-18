@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         腾讯会议逐字稿复制助手 (Tencent Meeting Transcript Copier)
 // @namespace    https://github.com/awesome-tampermonkey
-// @version      1.7.0
+// @version      1.8.0
 // @description  复制或导出腾讯会议录制页面/转写页面的完整逐字稿，并生成 AI 修复与 Notion 保存提示词。
 // @author       Codex
 // @match        https://meeting.tencent.com/cw/*
@@ -383,14 +383,28 @@
             .filter(Boolean)
             .filter(line => line !== speaker)
             .filter(line => line !== time)
+            .filter(line => !uiNoise.has(line))
             .map(line => normalizeText(line.replace(timePattern, '')))
             .filter(Boolean);
 
         return lines.join('\n');
     }
 
+    function hasTranscriptDomShape(row) {
+        const className = String(row.className || '');
+        if (row.matches('[data-pid]') || row.querySelector('[data-pid]')) return true;
+        if (/paragraph-module_detail|minutes-module-row/.test(className)) return true;
+
+        const hasSpeakerNode = Boolean(row.querySelector(speakerSelectors));
+        const hasTimeNode = Array.from(row.querySelectorAll(timeSelectors)).some(element => timePattern.test(getText(element)));
+        const hasSentenceNode = Boolean(row.querySelector(textSelectors));
+
+        return hasSentenceNode && (hasSpeakerNode || hasTimeNode);
+    }
+
     function parseTranscriptRow(row) {
         if (!isVisible(row)) return null;
+        if (!hasTranscriptDomShape(row)) return null;
 
         const fullText = getText(row);
         if (!fullText || fullText.length < 2 || uiNoise.has(fullText)) return null;
